@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BT Audio Keeper</string>
+    <string name="channel_name">Bluetooth keep-alive</string>
+    <string name="notif_text">Holding the BT audio link open</string>
+    <string name="action_start">Start</string>
+    <string name="action_stop">Stop</string>
+    <string name="status_running">Running — silent stream active</string>
+    <string name="status_stopped">Stopped</string>
+</resources>
