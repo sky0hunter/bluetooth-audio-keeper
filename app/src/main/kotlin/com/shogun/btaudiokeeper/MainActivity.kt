@@ -63,6 +63,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -257,7 +258,8 @@ private fun ToggleOrb(running: Boolean, onClick: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(140.dp)
-                    .background(coreColor, CircleShape)
+                    .clip(CircleShape)
+                    .background(coreColor)
                     .clickable(onClick = onClick),
                 contentAlignment = Alignment.Center
             ) {
