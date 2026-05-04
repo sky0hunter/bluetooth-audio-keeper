@@ -3,6 +3,7 @@ package com.shogun.btaudiokeeper
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -41,17 +42,25 @@ class KeeperService : Service() {
 
     override fun onDestroy() {
         stopStream()
+        Prefs.setRunning(this, false)
         super.onDestroy()
     }
 
     private fun startForegroundCompat() {
+        val stopIntent = Intent(this, KeeperService::class.java).setAction(ACTION_STOP)
+        val stopPi = PendingIntent.getService(
+            this, 0, stopIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         val notif: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(getString(R.string.notif_text))
-            .setSmallIcon(android.R.drawable.stat_sys_speakerphone)
+            .setSmallIcon(R.drawable.ic_keeper_on)
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(0, getString(R.string.action_stop), stopPi)
             .build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -83,24 +92,24 @@ class KeeperService : Service() {
     /**
      * Stream low-amplitude white noise through AudioTrack.
      *
-     * Why noise and not zeros: most BT audio chains run silence detection on the
-     * source — pure-zero PCM is treated as "no signal" and the speaker amp goes
-     * back into standby, which is exactly what we're trying to prevent. A handful
-     * of LSBs of dither stays inaudible but keeps the signal "live".
+     * Pure-zero PCM gets treated as silence by BT codecs and the speaker amp goes
+     * back to standby — the exact behavior we're suppressing. Sub-audible dither
+     * keeps the signal "live".
      *
-     * Why USAGE_ASSISTANCE_SONIFICATION + no MediaSession + no audio focus:
-     * Android only routes media-button events (play/pause from the BT remote or
-     * notification) to apps that hold a MediaSession. By not creating one and not
-     * requesting audio focus, Audible keeps full ownership of media controls.
+     * USAGE_ASSISTANCE_SONIFICATION + no MediaSession + no audio focus: media-button
+     * events only route to apps holding a MediaSession, so Audible keeps full
+     * ownership of play/pause from the BT remote and lockscreen.
      */
     private fun startStream() {
         running = true
+        Prefs.setRunning(this, true)
+        val amplitude = Prefs.amplitude(this)
         worker = thread(name = "bt-keeper", isDaemon = true) {
             val sampleRate = 44100
             val channelMask = AudioFormat.CHANNEL_OUT_MONO
             val encoding = AudioFormat.ENCODING_PCM_16BIT
             val minBuf = AudioTrack.getMinBufferSize(sampleRate, channelMask, encoding)
-            val bufSize = maxOf(minBuf, sampleRate / 5 * 2) // ~200 ms
+            val bufSize = maxOf(minBuf, sampleRate / 5 * 2)
 
             val attrs = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
@@ -123,9 +132,6 @@ class KeeperService : Service() {
 
             val chunk = ShortArray(bufSize / 2)
             val rng = Random(System.nanoTime())
-            // ~ -78 dBFS — inaudible on speakers at normal listening volume,
-            // still above the silence-detector threshold on the cheap BT chains.
-            val amplitude = 4
             try {
                 while (running) {
                     for (i in chunk.indices) {

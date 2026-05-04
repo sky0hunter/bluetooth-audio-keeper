@@ -7,7 +7,9 @@
 
     <application
         android:label="@string/app_name"
-        android:theme="@style/Theme.AppCompat.DayNight"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.BTKeeper"
         android:allowBackup="false">
 
         <activity
@@ -23,5 +25,17 @@
             android:name=".KeeperService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <receiver
+            android:name=".KeeperWidget"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.shogun.btaudiokeeper.STATE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_keeper_info" />
+        </receiver>
     </application>
 </manifest>
