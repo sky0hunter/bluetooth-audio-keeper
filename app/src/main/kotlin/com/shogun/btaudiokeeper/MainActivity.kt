@@ -25,15 +25,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -45,6 +45,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -65,11 +68,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
 
@@ -124,13 +125,14 @@ private fun BTKeeperTheme(content: @Composable () -> Unit) {
 @Composable
 private fun KeeperScreen() {
     val ctx = LocalContext.current
-    var running by remember { mutableStateOf(Prefs.isRunning(ctx)) }
+    var state by remember { mutableStateOf(Prefs.state(ctx)) }
+    var mode by remember { mutableStateOf(Prefs.mode(ctx)) }
     var amplitude by remember { mutableIntStateOf(Prefs.amplitude(ctx)) }
 
     DisposableEffect(ctx) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context, i: Intent) {
-                running = Prefs.isRunning(c)
+                state = Prefs.state(c)
             }
         }
         val filter = IntentFilter(Prefs.ACTION_STATE_CHANGED)
@@ -138,7 +140,7 @@ private fun KeeperScreen() {
         onDispose { ctx.unregisterReceiver(receiver) }
     }
 
-    LaunchedEffect(Unit) { running = Prefs.isRunning(ctx) }
+    LaunchedEffect(Unit) { state = Prefs.state(ctx) }
 
     Column(
         modifier = Modifier
@@ -148,30 +150,56 @@ private fun KeeperScreen() {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         TopBar()
-        Spacer(Modifier.height(40.dp))
+        Spacer(Modifier.height(32.dp))
         Box(
             modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-            ToggleOrb(running = running) {
-                running = !running
+            ToggleOrb(state = state) {
+                val running = state != Prefs.State.IDLE
                 val intent = Intent(ctx, KeeperService::class.java)
                 if (running) {
-                    ContextCompat.startForegroundService(ctx, intent)
-                } else {
                     intent.action = KeeperService.ACTION_STOP
                     ctx.startService(intent)
+                } else {
+                    intent.action = if (mode == Prefs.Mode.AUTO)
+                        KeeperService.ACTION_START_AUTO
+                    else
+                        KeeperService.ACTION_START_MANUAL
+                    ContextCompat.startForegroundService(ctx, intent)
                 }
             }
         }
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(20.dp))
         Text(
-            text = if (running) ctx.getString(R.string.status_running)
-            else ctx.getString(R.string.status_stopped),
+            text = ctx.getString(
+                when (state) {
+                    Prefs.State.IDLE -> R.string.status_idle
+                    Prefs.State.WATCHING -> R.string.status_watching
+                    Prefs.State.STREAMING -> R.string.status_streaming
+                }
+            ),
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onBackground
         )
-        Spacer(Modifier.height(40.dp))
+        Spacer(Modifier.height(28.dp))
+        ModeCard(
+            mode = mode,
+            onModeChange = { newMode ->
+                mode = newMode
+                Prefs.setMode(ctx, newMode)
+                if (state != Prefs.State.IDLE) {
+                    val intent = Intent(ctx, KeeperService::class.java).apply {
+                        action = if (newMode == Prefs.Mode.AUTO)
+                            KeeperService.ACTION_START_AUTO
+                        else
+                            KeeperService.ACTION_START_MANUAL
+                    }
+                    ContextCompat.startForegroundService(ctx, intent)
+                }
+            }
+        )
+        Spacer(Modifier.height(16.dp))
         SignalCard(
             amplitude = amplitude,
             onChange = {
@@ -211,11 +239,14 @@ private fun TopBar() {
 }
 
 @Composable
-private fun ToggleOrb(running: Boolean, onClick: () -> Unit) {
+private fun ToggleOrb(state: Prefs.State, onClick: () -> Unit) {
+    val running = state != Prefs.State.IDLE
+    val streaming = state == Prefs.State.STREAMING
+
     val transition = rememberInfiniteTransition(label = "orb-pulse")
     val pulse by transition.animateFloat(
         initialValue = 1f,
-        targetValue = if (running) 1.06f else 1f,
+        targetValue = if (streaming) 1.06f else 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 1400, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
@@ -224,20 +255,29 @@ private fun ToggleOrb(running: Boolean, onClick: () -> Unit) {
     )
 
     val ringColor by animateColorAsState(
-        targetValue = if (running) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.surfaceVariant,
+        targetValue = when (state) {
+            Prefs.State.STREAMING -> MaterialTheme.colorScheme.primary
+            Prefs.State.WATCHING -> MaterialTheme.colorScheme.tertiary
+            Prefs.State.IDLE -> MaterialTheme.colorScheme.surfaceVariant
+        },
         animationSpec = tween(400),
         label = "ring"
     )
     val coreColor by animateColorAsState(
-        targetValue = if (running) MaterialTheme.colorScheme.primaryContainer
-        else MaterialTheme.colorScheme.surface,
+        targetValue = when (state) {
+            Prefs.State.STREAMING -> MaterialTheme.colorScheme.primaryContainer
+            Prefs.State.WATCHING -> MaterialTheme.colorScheme.tertiaryContainer
+            Prefs.State.IDLE -> MaterialTheme.colorScheme.surface
+        },
         animationSpec = tween(400),
         label = "core"
     )
     val iconColor by animateColorAsState(
-        targetValue = if (running) MaterialTheme.colorScheme.onPrimaryContainer
-        else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = when (state) {
+            Prefs.State.STREAMING -> MaterialTheme.colorScheme.onPrimaryContainer
+            Prefs.State.WATCHING -> MaterialTheme.colorScheme.onTertiaryContainer
+            Prefs.State.IDLE -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
         animationSpec = tween(400),
         label = "icon"
     )
@@ -245,7 +285,7 @@ private fun ToggleOrb(running: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(220.dp)
-            .scale(if (running) pulse else 1f)
+            .scale(if (streaming) pulse else 1f)
             .background(ringColor.copy(alpha = 0.18f), CircleShape),
         contentAlignment = Alignment.Center
     ) {
@@ -270,6 +310,56 @@ private fun ToggleOrb(running: Boolean, onClick: () -> Unit) {
                     modifier = Modifier.size(64.dp)
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ModeCard(
+    mode: Prefs.Mode,
+    onModeChange: (Prefs.Mode) -> Unit
+) {
+    val ctx = LocalContext.current
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        )
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                ctx.getString(R.string.mode_label),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(12.dp))
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                SegmentedButton(
+                    selected = mode == Prefs.Mode.MANUAL,
+                    onClick = { onModeChange(Prefs.Mode.MANUAL) },
+                    shape = SegmentedButtonDefaults.itemShape(0, 2)
+                ) {
+                    Text(ctx.getString(R.string.mode_manual))
+                }
+                SegmentedButton(
+                    selected = mode == Prefs.Mode.AUTO,
+                    onClick = { onModeChange(Prefs.Mode.AUTO) },
+                    shape = SegmentedButtonDefaults.itemShape(1, 2)
+                ) {
+                    Text(ctx.getString(R.string.mode_auto))
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = ctx.getString(
+                    if (mode == Prefs.Mode.AUTO) R.string.mode_auto_hint
+                    else R.string.mode_manual_hint
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

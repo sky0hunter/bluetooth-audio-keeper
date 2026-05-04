@@ -29,6 +29,10 @@ class KeeperWidget : AppWidgetProvider() {
                     svc.action = KeeperService.ACTION_STOP
                     ctx.startService(svc)
                 } else {
+                    svc.action = if (Prefs.mode(ctx) == Prefs.Mode.AUTO)
+                        KeeperService.ACTION_START_AUTO
+                    else
+                        KeeperService.ACTION_START_MANUAL
                     ContextCompat.startForegroundService(ctx, svc)
                 }
                 refreshAll(ctx)
@@ -47,21 +51,24 @@ class KeeperWidget : AppWidgetProvider() {
         }
 
         private fun renderWidget(ctx: Context, mgr: AppWidgetManager, id: Int) {
-            val running = Prefs.isRunning(ctx)
+            val state = Prefs.state(ctx)
+            val active = state != Prefs.State.IDLE
+            val labelRes = when (state) {
+                Prefs.State.IDLE -> R.string.widget_label_off
+                Prefs.State.WATCHING -> R.string.widget_label_watching
+                Prefs.State.STREAMING -> R.string.widget_label_on
+            }
             val views = RemoteViews(ctx.packageName, R.layout.widget_keeper).apply {
                 setImageViewResource(
                     R.id.widget_icon,
-                    if (running) R.drawable.ic_widget_on else R.drawable.ic_widget_off
+                    if (active) R.drawable.ic_widget_on else R.drawable.ic_widget_off
                 )
                 setInt(
                     R.id.widget_root,
                     "setBackgroundResource",
-                    if (running) R.drawable.widget_bg_on else R.drawable.widget_bg_off
+                    if (active) R.drawable.widget_bg_on else R.drawable.widget_bg_off
                 )
-                setTextViewText(
-                    R.id.widget_label,
-                    ctx.getString(if (running) R.string.widget_label_on else R.string.widget_label_off)
-                )
+                setTextViewText(R.id.widget_label, ctx.getString(labelRes))
 
                 val toggle = Intent(ctx, KeeperWidget::class.java).setAction(ACTION_TOGGLE)
                 val pi = PendingIntent.getBroadcast(

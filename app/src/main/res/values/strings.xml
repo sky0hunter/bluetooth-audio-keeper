@@ -3,15 +3,24 @@
     <string name="app_name">BT Audio Keeper</string>
     <string name="channel_name">Bluetooth keep-alive</string>
     <string name="notif_text">Holding the BT audio link open</string>
+    <string name="notif_watching">Auto — waiting for media</string>
+    <string name="notif_streaming">Holding the BT audio link open</string>
     <string name="action_start">Start</string>
     <string name="action_stop">Stop</string>
-    <string name="status_running">Keeping speakers awake</string>
-    <string name="status_stopped">Standby</string>
+    <string name="status_idle">Off</string>
+    <string name="status_watching">Listening for media</string>
+    <string name="status_streaming">Keeping speakers awake</string>
     <string name="signal_level">Signal level</string>
     <string name="signal_hint">Higher = louder fill, more reliable wake. Default is inaudible on most setups.</string>
     <string name="how_it_works_title">How it works</string>
     <string name="how_it_works_body">Plays sub-audible noise so cheap Bluetooth speakers don\'t treat silence between sentences as \"no signal\" and put the amp into standby. The first syllable after each pause stops getting clipped. Audible (or any other player) keeps full control of play/pause — this app never claims media focus.</string>
+    <string name="mode_label">Mode</string>
+    <string name="mode_manual">Manual</string>
+    <string name="mode_auto">Auto</string>
+    <string name="mode_manual_hint">Streams whenever you toggle it on.</string>
+    <string name="mode_auto_hint">Streams only while another app plays media.</string>
     <string name="widget_label_on">On</string>
     <string name="widget_label_off">Off</string>
+    <string name="widget_label_watching">Auto</string>
     <string name="widget_description">Toggle BT Audio Keeper</string>
 </resources>
