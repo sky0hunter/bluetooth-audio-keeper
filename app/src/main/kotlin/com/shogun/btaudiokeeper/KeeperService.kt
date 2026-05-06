@@ -30,6 +30,11 @@ class KeeperService : Service() {
     private var audioCallback: AudioManager.AudioPlaybackCallback? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /** Wall-clock millis of last state transition. Used to debounce the audio-playback
+     *  callback during the brief window where our own teardown still shows up in
+     *  [AudioManager.getActivePlaybackConfigurations]. */
+    @Volatile private var lastTransitionAt = 0L
+
     private val audioManager by lazy {
         getSystemService(AUDIO_SERVICE) as AudioManager
     }
@@ -70,11 +75,11 @@ class KeeperService : Service() {
 
     private fun transitionTo(target: Prefs.State) {
         if (state == target) {
-            // Even if no transition, make sure foreground notification matches and prefs are synced.
             if (target != Prefs.State.IDLE) updateNotification()
             return
         }
         state = target
+        lastTransitionAt = System.currentTimeMillis()
         when (target) {
             Prefs.State.IDLE -> {
                 unregisterAudioCallback()
@@ -164,12 +169,15 @@ class KeeperService : Service() {
         if (audioCallback != null) return
         val cb = object : AudioManager.AudioPlaybackCallback() {
             override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>) {
-                val mediaActive = configs.any { isMediaUsage(it.audioAttributes.usage) }
+                val externalActive = isExternalMediaActive(configs)
                 mainHandler.post {
                     if (state == Prefs.State.IDLE) return@post
-                    if (mediaActive && state == Prefs.State.WATCHING) {
+                    // Skip events that fire mid-teardown — our own AudioTrack lingers briefly
+                    // after stopStream() returns, and would re-trigger the wrong transition.
+                    if (System.currentTimeMillis() - lastTransitionAt < 1200) return@post
+                    if (externalActive && state == Prefs.State.WATCHING) {
                         transitionTo(Prefs.State.STREAMING)
-                    } else if (!mediaActive && state == Prefs.State.STREAMING &&
+                    } else if (!externalActive && state == Prefs.State.STREAMING &&
                         Prefs.mode(this@KeeperService) == Prefs.Mode.AUTO
                     ) {
                         transitionTo(Prefs.State.WATCHING)
@@ -179,8 +187,16 @@ class KeeperService : Service() {
         }
         audioCallback = cb
         audioManager.registerAudioPlaybackCallback(cb, mainHandler)
-        // Seed with current state — callback only fires on changes.
         cb.onPlaybackConfigChanged(audioManager.activePlaybackConfigurations.toMutableList())
+    }
+
+    /** Count USAGE_MEDIA / USAGE_GAME configs, subtract our own track if it's running.
+     *  AudioPlaybackConfiguration doesn't expose a public `clientUid` or `sessionId`, so the
+     *  count-delta approach is the cleanest way to ignore ourselves. */
+    private fun isExternalMediaActive(configs: List<AudioPlaybackConfiguration>): Boolean {
+        val total = configs.count { isMediaUsage(it.audioAttributes.usage) }
+        val ours = if (streamRunning) 1 else 0
+        return total > ours
     }
 
     private fun unregisterAudioCallback() {
@@ -201,9 +217,12 @@ class KeeperService : Service() {
      * back to standby — the exact behavior we're suppressing. Sub-audible dither
      * keeps the signal "live".
      *
-     * USAGE_ASSISTANCE_SONIFICATION + no MediaSession + no audio focus: media-button
-     * events only route to apps holding a MediaSession, so Audible keeps full
-     * ownership of play/pause from the BT remote and lockscreen.
+     * USAGE_MEDIA (not SONIFICATION) is required for the stream to actually route to the
+     * A2DP speaker. SONIFICATION-tagged streams stay on the phone's internal speaker on
+     * most BT setups, which is why earlier versions had no audible effect. We don't
+     * register a MediaSession and don't request audio focus, so media-button events from
+     * the BT remote / lockscreen still go to whichever player Audible / Spotify holds the
+     * session for.
      */
     private fun startStream() {
         streamRunning = true
@@ -216,8 +235,8 @@ class KeeperService : Service() {
             val bufSize = maxOf(minBuf, sampleRate / 5 * 2)
 
             val attrs = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                 .build()
 
             val format = AudioFormat.Builder()

@@ -14,7 +14,7 @@ object Prefs {
 
     const val DEFAULT_AMPLITUDE = 4
     const val MIN_AMPLITUDE = 1
-    const val MAX_AMPLITUDE = 128
+    const val MAX_AMPLITUDE = 2048
 
     const val ACTION_STATE_CHANGED = "com.shogun.btaudiokeeper.STATE_CHANGED"
 
