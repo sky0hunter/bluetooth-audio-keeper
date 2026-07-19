@@ -5,7 +5,6 @@
     <string name="notif_text">Holding the BT audio link open</string>
     <string name="notif_watching">Auto — waiting for media</string>
     <string name="notif_streaming">Holding the BT audio link open</string>
-    <string name="action_start">Start</string>
     <string name="action_stop">Stop</string>
     <string name="status_idle">Off</string>
     <string name="status_watching">Listening for media</string>
