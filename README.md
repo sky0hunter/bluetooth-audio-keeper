@@ -1,5 +1,7 @@
 # BT Audio Keeper
 
+[![ci](https://github.com/sky0hunter/bluetooth-audio-keeper/actions/workflows/ci.yml/badge.svg)](https://github.com/sky0hunter/bluetooth-audio-keeper/actions/workflows/ci.yml)
+
 Keeps cheap Bluetooth speakers awake so they stop clipping the start of your audio.
 
 ## The problem
@@ -49,3 +51,7 @@ A daemon thread writes low-amplitude random PCM (44.1 kHz mono, 16-bit) to an
 audio routes to the phone speaker on most Bluetooth stacks and never reaches the
 A2DP sink. Auto mode uses `AudioManager.AudioPlaybackCallback` to detect when other
 apps play `USAGE_MEDIA`/`USAGE_GAME` audio and starts/stops the noise accordingly.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
